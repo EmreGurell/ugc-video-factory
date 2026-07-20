@@ -3,7 +3,7 @@
 AI pipeline: prompt → UGC fotoğraf → sahne klipleri → final video → Flutter mobil uygulama.
 
 ## Stack (fal.ai TAMAMEN kaldırıldı — 2026-07; Supabase TAMAMEN kaldırıldı — 2026-07-20)
-- Backend: NestJS + TypeScript (port 3000), hedef host: Railway
+- Backend: NestJS + TypeScript (port 3000) — Railway'de canlı: https://backend-production-e140.up.railway.app (proje: `ugc-video-factory`, GitHub `EmreGurell/ugc-video-factory` main branch'e push'ta otomatik deploy)
 - Queue: BullMQ + Redis (`docker compose up -d`)
 - AI Görsel: kie.ai Nano Banana (`google/nano-banana`, referanslı: `google/nano-banana-edit`, pro: `nano-banana-pro`)
 - AI Video: kie.ai Kling 2.1 (`kling/v2-1-standard|pro`), Sora 2, Veo 3 (`veo3_fast`, native ses+konuşma)
