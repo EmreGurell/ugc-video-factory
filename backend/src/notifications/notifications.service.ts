@@ -16,6 +16,22 @@ export class NotificationsService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
+    // Railway gibi platformlarda kalıcı dosya sistemi yok — servis hesabı JSON'u
+    // doğrudan env değişkeni olarak da verilebilir. Yerelde dosya yolu kullanılır.
+    const inlineJson = this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
+    if (inlineJson) {
+      try {
+        const serviceAccount = JSON.parse(inlineJson) as admin.ServiceAccount;
+        this.app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+        this.logger.log('Firebase Admin başlatıldı (env JSON), push bildirimleri aktif');
+      } catch (err) {
+        this.logger.warn(
+          `FIREBASE_SERVICE_ACCOUNT_JSON parse edilemedi — push bildirimleri devre dışı: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+      return;
+    }
+
     const configuredPath =
       this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_PATH') ?? 'firebase-service-account.json';
     const credentialPath = path.isAbsolute(configuredPath)
@@ -28,7 +44,7 @@ export class NotificationsService implements OnModuleInit {
     }
 
     this.app = admin.initializeApp({ credential: admin.credential.cert(credentialPath) });
-    this.logger.log('Firebase Admin başlatıldı, push bildirimleri aktif');
+    this.logger.log('Firebase Admin başlatıldı (dosya), push bildirimleri aktif');
   }
 
   async registerToken(userId: string, token: string, platform: string): Promise<void> {
