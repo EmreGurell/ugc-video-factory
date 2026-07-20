@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password_hash String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  jobs              Job[]
+  reference_photos  ReferencePhoto[]
+  refresh_tokens    RefreshToken[]
+  device_tokens     DeviceToken[]
+
+  @@map("users")
+}
+
+model DeviceToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token      String   @unique
+  platform   String   @default("android")
+  created_at DateTime @default(now())
+
+  @@index([user_id])
+  @@map("device_tokens")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String    @unique
+  expires_at DateTime
+  revoked_at DateTime?
+  created_at DateTime  @default(now())
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+model Job {
+  id                  String   @id @default(uuid())
+  user_id             String
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  status              String   @default("pending")
+  content_type        String   @default("ugc_selfie")
+  product_name        String?
+  video_brief         String?
+  product_research    String?
+  draft_script        String?
+  approved_script     String?
+  prompt_character    String?
+  prompt_script       String?
+  aspect_ratio        String   @default("9:16")
+  scene_count         Int      @default(3)
+  video_style         String   @default("dynamic")
+  voice_language      String   @default("tr")
+  voice_gender        String   @default("female")
+  reference_image_url String?
+  reference_tags      String[]
+  music_mode          String   @default("none")
+  music_style         String?
+  image_model         String   @default("nano_banana")
+  video_model         String   @default("kling_standard")
+  image_url           String?
+  scenes              Json?
+  clip_urls           String[]
+  final_video_url     String?
+  error_message       String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([user_id])
+  @@map("jobs")
+}
+
+model ReferencePhoto {
+  id          String   @id @default(uuid())
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tag         String
+  url         String
+  description String?
+  created_at  DateTime @default(now())
+
+  @@index([user_id, tag])
+  @@map("reference_photos")
+}

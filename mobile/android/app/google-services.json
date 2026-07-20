@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "781131535438",
+    "project_id": "ugc-content-9d8cf",
+    "storage_bucket": "ugc-content-9d8cf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781131535438:android:342c7cdfee4b37a17e1f1f",
+        "android_client_info": {
+          "package_name": "com.ugcfactory.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBjnOFFs_jXHQGL5l89M30nJkFgVGfIVX8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
