@@ -10,7 +10,7 @@ class ApiService {
   final String baseUrl;
   final AuthService auth;
 
-  const ApiService({this.baseUrl = 'http://10.24.41.46:3000', this.auth = const AuthService()});
+  const ApiService({this.baseUrl = 'https://backend-production-e140.up.railway.app', this.auth = const AuthService()});
 
   Future<Map<String, String>> _authHeaders() async {
     final token = await auth.accessToken;

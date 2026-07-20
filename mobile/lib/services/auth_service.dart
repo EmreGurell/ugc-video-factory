@@ -16,7 +16,7 @@ class AuthService {
   static const _refreshKey = 'refresh_token';
   static const _emailKey = 'user_email';
 
-  const AuthService({this.baseUrl = 'http://10.24.41.46:3000'});
+  const AuthService({this.baseUrl = 'https://backend-production-e140.up.railway.app'});
 
   Future<String?> get accessToken => _storage.read(key: _accessKey);
   Future<String?> get refreshToken => _storage.read(key: _refreshKey);
