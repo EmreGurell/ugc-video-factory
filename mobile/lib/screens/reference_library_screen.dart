@@ -69,6 +69,9 @@ class _ReferenceLibraryScreenState extends State<ReferenceLibraryScreen> {
         onPressed: _addNew,
         icon: const Icon(Icons.create_new_folder_outlined),
         label: const Text('Referans Ekle'),
+        elevation: 0,
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

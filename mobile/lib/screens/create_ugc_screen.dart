@@ -279,7 +279,10 @@ class _CreateUGCScreenState extends State<CreateUGCScreen> {
       setState(() => _step--);
       _pageController.animateToPage(_step,
           duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
-    } else {
+    } else if (Navigator.canPop(context)) {
+      // Bu ekran MainShell içinde bir sekme (IndexedStack) — push edilmiş bir
+      // route değil. Pop edilecek bir şey yoksa kök navigator'ı boşaltıp
+      // siyah ekrana yol açmamak için önce kontrol ediyoruz.
       Navigator.pop(context);
     }
   }
