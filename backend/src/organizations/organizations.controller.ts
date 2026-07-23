@@ -30,6 +30,17 @@ export class OrganizationsController {
     return this.db.listMembershipsForOrg(org.organizationId);
   }
 
+  // Mobil "Oluştur" ekranının kalan kredi/plan göstergesi için.
+  @Get('credits')
+  async credits(@CurrentOrg() org: OrgContext) {
+    const organization = await this.db.getOrganization(org.organizationId);
+    const plan = organization.active_plan_id ? await this.db.getPlanByKey(organization.active_plan_id) : null;
+    return {
+      credits_remaining: organization.credits_remaining,
+      plan: plan ? { key: plan.key, name: plan.name, monthly_credit_allowance: plan.monthly_credit_allowance } : null,
+    };
+  }
+
   // Sadece kayıtlı bir kullanıcıyı e-posta ile mevcut org'a ekler — davet
   // e-postası/token akışı henüz yok, bu yüzden kullanıcı önce kendi hesabıyla
   // kayıt olmuş olmalı.

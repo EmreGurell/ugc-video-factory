@@ -30,17 +30,53 @@ model Organization {
   id                     String    @id @default(uuid())
   name                   String
   active_plan_id         String?
+  active_plan            Plan?     @relation(fields: [active_plan_id], references: [key])
   credits_remaining      Int       @default(0)
   credits_period_start   DateTime?
   revenuecat_app_user_id String?
   created_at             DateTime  @default(now())
 
-  memberships       Membership[]
-  jobs              Job[]
-  reference_photos  ReferencePhoto[]
-  refresh_tokens    RefreshToken[]
+  memberships         Membership[]
+  jobs                Job[]
+  reference_photos    ReferencePhoto[]
+  refresh_tokens      RefreshToken[]
+  provider_cost_events ProviderCostEvent[]
 
   @@map("organizations")
+}
+
+// Sabit, elle seed edilen plan seviyeleri (Free/Starter/Pro) — RevenueCat
+// ürünleriyle eşleşir (Faz 4). `key` insan-okunur kimlik, mağaza ürün id'si değil.
+model Plan {
+  key                     String   @id
+  name                    String
+  monthly_credit_allowance Int
+  price_usd               Float?
+  revenuecat_product_ids  String[]
+  created_at              DateTime @default(now())
+
+  organizations Organization[]
+
+  @@map("plans")
+}
+
+// Her gerçek (ücretli) sağlayıcı çağrısından sonra bir kayıt — marj/maliyet
+// analitiği içindir, pipeline'ı mid-flight durdurmaz. Kredi düşme/iade
+// Job.credits_charged üzerinden ayrı çalışır (bkz. jobs.service.ts, pipeline.service.ts).
+model ProviderCostEvent {
+  id              String   @id @default(uuid())
+  job_id          String
+  job             Job      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  provider        String
+  operation       String
+  unit_cost_usd   Float
+  created_at      DateTime @default(now())
+
+  @@index([organization_id])
+  @@index([job_id])
+  @@map("provider_cost_events")
 }
 
 model Membership {
@@ -117,8 +153,13 @@ model Job {
   clip_urls           String[]
   final_video_url     String?
   error_message       String?
+  actual_cost_usd     Float    @default(0)
+  credits_charged     Int      @default(0)
+  credits_refunded    Boolean  @default(false)
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
+
+  cost_events ProviderCostEvent[]
 
   @@index([user_id])
   @@index([organization_id])

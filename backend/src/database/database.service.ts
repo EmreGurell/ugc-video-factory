@@ -69,6 +69,9 @@ export interface Job {
   clip_urls?: string[];
   final_video_url?: string;
   error_message?: string;
+  actual_cost_usd: number;
+  credits_charged: number;
+  credits_refunded: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -123,6 +126,15 @@ export interface MembershipWithEmail extends Membership {
   email: string;
 }
 
+export interface Plan {
+  key: string;
+  name: string;
+  monthly_credit_allowance: number;
+  price_usd?: number | null;
+  revenuecat_product_ids: string[];
+  created_at: Date;
+}
+
 @Injectable()
 export class DatabaseService {
   constructor(private prisma: PrismaService) {}
@@ -144,12 +156,21 @@ export class DatabaseService {
   // ─── Organizasyonlar/üyelikler ──────────────────────────────────────────
 
   // Yeni kullanıcı kaydında çağrılır: kişisel bir organizasyon + owner üyeliği oluşturur.
+  // Ücretsiz plana ("free") otomatik atanır — seed edilmemişse 20 krediye düşer.
   async createPersonalOrganization(userId: string, name: string): Promise<Organization> {
-    const org = await this.prisma.organization.create({ data: { name } });
+    const freePlan = await this.prisma.plan.findUnique({ where: { key: 'free' } });
+    const org = await this.prisma.organization.create({
+      data: {
+        name,
+        active_plan_id: freePlan?.key,
+        credits_remaining: freePlan?.monthly_credit_allowance ?? 20,
+        credits_period_start: new Date(),
+      },
+    });
     await this.prisma.membership.create({
       data: { organization_id: org.id, user_id: userId, role: 'owner' },
     });
-    return org;
+    return org as unknown as Organization;
   }
 
   // Bir kullanıcının varsayılan (en eski/kişisel) organizasyonunu döner —
@@ -243,6 +264,7 @@ export class DatabaseService {
     music_style?: string;
     image_model?: string;
     video_model?: string;
+    credits_charged?: number;
   }): Promise<Job> {
     const job = await this.prisma.job.create({ data });
     return job as unknown as Job;
@@ -345,5 +367,85 @@ export class DatabaseService {
   async deleteDeviceTokens(tokens: string[]): Promise<void> {
     if (tokens.length === 0) return;
     await this.prisma.deviceToken.deleteMany({ where: { token: { in: tokens } } });
+  }
+
+  // ─── Kredi/kota ─────────────────────────────────────────────────────────
+
+  async getOrganization(id: string): Promise<Organization> {
+    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id } });
+    return org as unknown as Organization;
+  }
+
+  // Atomik düşüm: credits_remaining >= amount koşuluyla tek UPDATE, race
+  // condition'a karşı güvenli (read-then-write yerine WHERE guard'lı updateMany).
+  // false dönerse yetersiz kredi demektir, hiçbir satır değişmemiştir.
+  async deductCredits(organizationId: string, amount: number): Promise<boolean> {
+    if (amount <= 0) return true;
+    const { count } = await this.prisma.organization.updateMany({
+      where: { id: organizationId, credits_remaining: { gte: amount } },
+      data: { credits_remaining: { decrement: amount } },
+    });
+    return count > 0;
+  }
+
+  async refundCredits(organizationId: string, amount: number): Promise<void> {
+    if (amount <= 0) return;
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { credits_remaining: { increment: amount } },
+    });
+  }
+
+  // Job başarısız olduğunda çağrılır: credits_refunded guard'ı üzerinden tek
+  // seferlik atomik iade yapar (phase1/phase2'nin ikisi de aynı job'u
+  // başarısız işaretleyebilir — çift iadeyi bu updateMany engeller).
+  async refundJobCreditsIfNeeded(jobId: string): Promise<void> {
+    const job = await this.prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+    if (job.credits_charged <= 0 || job.credits_refunded) return;
+    const { count } = await this.prisma.job.updateMany({
+      where: { id: jobId, credits_refunded: false },
+      data: { credits_refunded: true },
+    });
+    if (count > 0) {
+      await this.refundCredits(job.organization_id, job.credits_charged);
+    }
+  }
+
+  async recordProviderCost(data: {
+    job_id: string;
+    organization_id: string;
+    provider: string;
+    operation: string;
+    unit_cost_usd: number;
+  }): Promise<void> {
+    await this.prisma.providerCostEvent.create({ data });
+    await this.prisma.job.update({
+      where: { id: data.job_id },
+      data: { actual_cost_usd: { increment: data.unit_cost_usd } },
+    });
+  }
+
+  // ─── Planlar ────────────────────────────────────────────────────────────
+
+  async upsertPlan(plan: {
+    key: string;
+    name: string;
+    monthly_credit_allowance: number;
+    price_usd?: number;
+    revenuecat_product_ids: string[];
+  }): Promise<Plan> {
+    return this.prisma.plan.upsert({
+      where: { key: plan.key },
+      create: plan,
+      update: plan,
+    });
+  }
+
+  async listPlans(): Promise<Plan[]> {
+    return this.prisma.plan.findMany({ orderBy: { monthly_credit_allowance: 'asc' } });
+  }
+
+  async getPlanByKey(key: string): Promise<Plan | null> {
+    return this.prisma.plan.findUnique({ where: { key } });
   }
 }

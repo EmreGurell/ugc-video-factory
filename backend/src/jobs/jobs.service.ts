@@ -1,8 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { DatabaseService } from '../database/database.service';
 import { CreateJobDto } from './dto/create-job.dto';
+import { estimateJobCredits } from '../billing/credit-costs';
 
 export const VIDEO_PIPELINE_QUEUE = 'video-pipeline';
 
@@ -14,26 +15,39 @@ export class JobsService {
   ) {}
 
   async create(userId: string, organizationId: string, dto: CreateJobDto) {
-    const job = await this.db.createJob({
-      user_id: userId,
-      organization_id: organizationId,
-      product_name: dto.product_name,
-      video_brief: dto.video_brief,
-      prompt_character: dto.character_description,
-      prompt_script: dto.script,
-      aspect_ratio: dto.aspect_ratio ?? '9:16',
-      content_type: dto.content_type ?? 'ugc_selfie',
-      scene_count: dto.scene_count ?? 3,
-      video_style: dto.video_style ?? 'dynamic',
-      voice_language: dto.voice_language ?? 'tr',
-      voice_gender: dto.voice_gender ?? 'female',
-      reference_image_url: dto.reference_image_url,
-      reference_tags: dto.reference_tags,
-      music_mode: dto.music_mode ?? 'none',
-      music_style: dto.music_style,
-      image_model: dto.image_model,
-      video_model: dto.video_model,
-    });
+    const creditsCost = estimateJobCredits(dto);
+    const deducted = await this.db.deductCredits(organizationId, creditsCost);
+    if (!deducted) {
+      throw new HttpException('Yetersiz kredi — plan yükseltmeniz gerekiyor', HttpStatus.PAYMENT_REQUIRED);
+    }
+
+    let job;
+    try {
+      job = await this.db.createJob({
+        user_id: userId,
+        organization_id: organizationId,
+        product_name: dto.product_name,
+        video_brief: dto.video_brief,
+        prompt_character: dto.character_description,
+        prompt_script: dto.script,
+        aspect_ratio: dto.aspect_ratio ?? '9:16',
+        content_type: dto.content_type ?? 'ugc_selfie',
+        scene_count: dto.scene_count ?? 3,
+        video_style: dto.video_style ?? 'dynamic',
+        voice_language: dto.voice_language ?? 'tr',
+        voice_gender: dto.voice_gender ?? 'female',
+        reference_image_url: dto.reference_image_url,
+        reference_tags: dto.reference_tags,
+        music_mode: dto.music_mode ?? 'none',
+        music_style: dto.music_style,
+        image_model: dto.image_model,
+        video_model: dto.video_model,
+        credits_charged: creditsCost,
+      });
+    } catch (err) {
+      await this.db.refundCredits(organizationId, creditsCost);
+      throw err;
+    }
 
     await this.queue.add('run', { jobId: job.id, phase: 1 }, { attempts: 1 });
 

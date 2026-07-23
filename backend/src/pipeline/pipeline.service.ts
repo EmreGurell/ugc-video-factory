@@ -15,6 +15,8 @@ import { ImageProviderRegistry } from '../providers/image/image-provider.registr
 import { VideoProviderRegistry } from '../providers/video/video-provider.registry';
 import { KieSunoProvider } from '../providers/music/kie-suno.provider';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CostTrackingService } from '../billing/cost-tracking.service';
+import { IMAGE_MODEL_COST_USD, VIDEO_MODEL_CLIP_COST_USD, TTS_COST_USD, MUSIC_COST_USD } from '../billing/credit-costs';
 
 const MUSIC_LIBRARY_DIR = path.join(process.cwd(), 'assets', 'music');
 
@@ -55,6 +57,7 @@ export class PipelineService {
     private videoRegistry: VideoProviderRegistry,
     private suno: KieSunoProvider,
     private notifications: NotificationsService,
+    private costTracking: CostTrackingService,
     @Inject(IMAGE_PROVIDER) private imageProvider: ImageProvider,
     @Inject(VIDEO_PROVIDER) private videoProvider: VideoProvider,
     @Inject(TTS_PROVIDER) private ttsProvider: TtsProvider,
@@ -111,6 +114,7 @@ export class PipelineService {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[${jobId}] Phase 1 failed: ${message}`);
       await this.db.updateJob(jobId, { status: 'failed', error_message: message });
+      await this.db.refundJobCreditsIfNeeded(jobId);
       await this.notifyJobResult(jobId, false);
     }
   }
@@ -138,6 +142,7 @@ export class PipelineService {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[${jobId}] Phase 2 failed: ${message}`);
       await this.db.updateJob(jobId, { status: 'failed', error_message: message });
+      await this.db.refundJobCreditsIfNeeded(jobId);
       await this.notifyJobResult(jobId, false);
     }
   }
@@ -244,6 +249,7 @@ export class PipelineService {
       aspectRatio: job.aspect_ratio,
       referenceImageUrls: scene0Ref ? scene0Ref.urls.slice(0, MAX_REFS_PER_TAG) : undefined,
     });
+    await this.recordImageCost(job);
     const firstUrl = await this.storage.uploadToStorage(firstBuffer, `${jobId}/scene-0.jpg`, 'image/jpeg');
     plan.scenes[0].image_url = firstUrl;
     await this.db.updateJob(jobId, { image_url: firstUrl, scenes: plan.scenes });
@@ -273,6 +279,7 @@ CRITICAL: the FIRST reference image shows this exact person — same face, hair,
           aspectRatio: job.aspect_ratio,
           referenceImageUrls: refUrls,
         });
+        await this.recordImageCost(job);
         sceneImageUrl = await this.storage.uploadToStorage(buffer, `${jobId}/scene-${i}.jpg`, 'image/jpeg');
         scene.image_url = sceneImageUrl;
         await this.db.updateJob(jobId, { scenes: plan.scenes });
@@ -369,6 +376,8 @@ ${UGC_REALISM_RULES}`;
       this.imageProvider.generateImage({ prompt: beforePrompt, aspectRatio: job.aspect_ratio }),
       this.imageProvider.generateImage({ prompt: afterPrompt, aspectRatio: job.aspect_ratio }),
     ]);
+    await this.recordImageCost(job);
+    await this.recordImageCost(job);
 
     const [beforeUrl] = await Promise.all([
       this.storage.uploadToStorage(beforeBuffer, `${jobId}/before.jpg`, 'image/jpeg'),
@@ -397,15 +406,20 @@ ${UGC_REALISM_RULES}`;
       ? `${scene.motion_prompt}. ${TALKING_CUE}`
       : scene.motion_prompt;
 
+    const videoModel = job.video_model ?? 'kling_standard';
+    const clipCostUsd = VIDEO_MODEL_CLIP_COST_USD[videoModel] ?? VIDEO_MODEL_CLIP_COST_USD.kling_standard;
+
     if (videoProvider.hasNativeAudio) {
       // Veo 3: konuşma dili belirtilir ki narration doğru dilde seslendirilsin
       const language = LANGUAGE_NAMES[job.voice_language] ?? 'Turkish';
-      return videoProvider.generateVideoClip({
+      const clip = await videoProvider.generateVideoClip({
         imageUrl,
         motionPrompt: `${motionPrompt} | the person speaks ${language}, saying exactly: "${scene.text}"`,
         duration: scene.duration,
         aspectRatio: job.aspect_ratio,
       });
+      await this.costTracking.record(job.id, job.organization_id, videoModel, 'video_clip', clipCostUsd);
+      return clip;
     }
 
     const [videoBuffer, audioBuffer] = await Promise.all([
@@ -421,6 +435,8 @@ ${UGC_REALISM_RULES}`;
         gender: job.voice_gender,
       }),
     ]);
+    await this.costTracking.record(job.id, job.organization_id, videoModel, 'video_clip', clipCostUsd);
+    await this.costTracking.record(job.id, job.organization_id, 'elevenlabs', 'tts', TTS_COST_USD);
     return this.ffmpeg.mixAudioVideo(videoBuffer, audioBuffer);
   }
 
@@ -438,11 +454,18 @@ ${UGC_REALISM_RULES}`;
     const prompt = await this.claude.craftImagePrompt(context, job.content_type, job.aspect_ratio);
     const imageProvider = this.imageRegistry.getProvider(job.image_model);
     const referenceImageUrls = this.flattenReferenceUrls(references);
-    return imageProvider.generateImage({
+    const image = await imageProvider.generateImage({
       prompt,
       aspectRatio: job.aspect_ratio,
       referenceImageUrls: referenceImageUrls.length ? referenceImageUrls : undefined,
     });
+    await this.recordImageCost(job);
+    return image;
+  }
+
+  private async recordImageCost(job: Job): Promise<void> {
+    const imageModel = job.image_model ?? 'nano_banana';
+    await this.costTracking.record(job.id, job.organization_id, imageModel, 'image_generate', IMAGE_MODEL_COST_USD[imageModel] ?? IMAGE_MODEL_COST_USD.nano_banana);
   }
 
   // Bir tag (klasör) birden fazla foto tutabildiği için görsel üretimine giden
@@ -523,6 +546,7 @@ ${UGC_REALISM_RULES}`;
         const { style, title } = await this.claude.craftMusicPrompt(script, job.content_type, job.music_style);
         this.logger.log(`[${jobId}] Müzik (AI): "${title}" — ${style.slice(0, 80)}...`);
         musicBuffer = await this.suno.generateInstrumental(style, title);
+        await this.costTracking.record(jobId, job.organization_id, 'suno', 'music', MUSIC_COST_USD.ai);
       }
 
       return await this.ffmpeg.mixMusicUnderVoice(videoBuffer, musicBuffer);
