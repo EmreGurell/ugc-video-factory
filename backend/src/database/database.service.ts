@@ -448,4 +448,27 @@ export class DatabaseService {
   async getPlanByKey(key: string): Promise<Plan | null> {
     return this.prisma.plan.findUnique({ where: { key } });
   }
+
+  // ─── RevenueCat webhook ─────────────────────────────────────────────────
+
+  // RevenueCat aynı event'i tekrar gönderebilir (retry) — event.id burada
+  // benzersiz olduğu için ikinci insert P2002 ile çakışır, bu "zaten işlendi" demektir.
+  async markWebhookEventProcessedIfNew(eventId: string, eventType: string, organizationId?: string): Promise<boolean> {
+    try {
+      await this.prisma.revenueCatWebhookEvent.create({
+        data: { id: eventId, event_type: eventType, organization_id: organizationId },
+      });
+      return true;
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') return false;
+      throw err;
+    }
+  }
+
+  async updateOrganizationBilling(
+    organizationId: string,
+    data: { active_plan_id: string; credits_remaining?: number; credits_period_start?: Date; revenuecat_app_user_id?: string },
+  ): Promise<void> {
+    await this.prisma.organization.update({ where: { id: organizationId }, data });
+  }
 }

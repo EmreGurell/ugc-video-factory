@@ -9,6 +9,7 @@ import { ReferencesModule } from './references/references.module';
 import { AuthModule } from './auth/auth.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     AuthModule,
     OrganizationsModule,
     NotificationsModule,
+    BillingModule,
     PipelineModule,
     JobsModule,
     ReferencesModule,

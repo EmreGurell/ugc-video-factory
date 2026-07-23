@@ -60,6 +60,17 @@ model Plan {
   @@map("plans")
 }
 
+// RevenueCat webhook idempotency: aynı event tekrar gönderilirse (RevenueCat
+// retry yapabilir) ikinci kez işlenmesin diye event.id burada tutulur.
+model RevenueCatWebhookEvent {
+  id           String   @id
+  event_type   String
+  organization_id String?
+  created_at   DateTime @default(now())
+
+  @@map("revenuecat_webhook_events")
+}
+
 // Her gerçek (ücretli) sağlayıcı çağrısından sonra bir kayıt — marj/maliyet
 // analitiği içindir, pipeline'ı mid-flight durdurmaz. Kredi düşme/iade
 // Job.credits_charged üzerinden ayrı çalışır (bkz. jobs.service.ts, pipeline.service.ts).
