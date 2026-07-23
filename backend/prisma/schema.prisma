@@ -18,8 +18,43 @@ model User {
   reference_photos  ReferencePhoto[]
   refresh_tokens    RefreshToken[]
   device_tokens     DeviceToken[]
+  memberships       Membership[]
 
   @@map("users")
+}
+
+// Bir organizasyon "workspace" — job/referans kütüphanesi görünürlük sınırı.
+// Her kullanıcı kayıt olurken otomatik olarak kendi kişisel organizasyonuna
+// owner olarak eklenir; birden fazla organizasyona üye olunabilir.
+model Organization {
+  id                     String    @id @default(uuid())
+  name                   String
+  active_plan_id         String?
+  credits_remaining      Int       @default(0)
+  credits_period_start   DateTime?
+  revenuecat_app_user_id String?
+  created_at             DateTime  @default(now())
+
+  memberships       Membership[]
+  jobs              Job[]
+  reference_photos  ReferencePhoto[]
+  refresh_tokens    RefreshToken[]
+
+  @@map("organizations")
+}
+
+model Membership {
+  id              String   @id @default(uuid())
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  user_id         String
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role            String   @default("owner")
+  created_at      DateTime @default(now())
+
+  @@unique([organization_id, user_id])
+  @@index([user_id])
+  @@map("memberships")
 }
 
 model DeviceToken {
@@ -34,14 +69,18 @@ model DeviceToken {
   @@map("device_tokens")
 }
 
+// organization_id: token'ın basıldığı andaki aktif organizasyon — refresh
+// edildiğinde kullanıcı hangi org'u seçmiş olursa olsun o bağlam korunur.
 model RefreshToken {
-  id         String    @id @default(uuid())
-  user_id    String
-  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  token_hash String    @unique
-  expires_at DateTime
-  revoked_at DateTime?
-  created_at DateTime  @default(now())
+  id              String    @id @default(uuid())
+  user_id         String
+  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  token_hash      String    @unique
+  expires_at      DateTime
+  revoked_at      DateTime?
+  created_at      DateTime  @default(now())
 
   @@index([user_id])
   @@map("refresh_tokens")
@@ -51,6 +90,8 @@ model Job {
   id                  String   @id @default(uuid())
   user_id             String
   user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  organization_id     String
+  organization        Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   status              String   @default("pending")
   content_type        String   @default("ugc_selfie")
   product_name        String?
@@ -80,18 +121,22 @@ model Job {
   updated_at          DateTime @updatedAt
 
   @@index([user_id])
+  @@index([organization_id])
   @@map("jobs")
 }
 
 model ReferencePhoto {
-  id          String   @id @default(uuid())
-  user_id     String
-  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  tag         String
-  url         String
-  description String?
-  created_at  DateTime @default(now())
+  id              String   @id @default(uuid())
+  user_id         String
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  organization_id String
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  tag             String
+  url             String
+  description     String?
+  created_at      DateTime @default(now())
 
   @@index([user_id, tag])
+  @@index([organization_id, tag])
   @@map("reference_photos")
 }

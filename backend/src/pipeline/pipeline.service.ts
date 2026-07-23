@@ -91,7 +91,7 @@ export class PipelineService {
       // yoksa senaryo mekân/nesne ayrımı içermiyor ve Faz 2'deki sahne
       // planlaması hangi sahnenin hangi referansa denk geldiğini çıkaramıyor.
       const scriptReferences = job.reference_tags?.length
-        ? this.groupByTag(await this.db.getReferencePhotosByTags(job.reference_tags, job.user_id))
+        ? this.groupByTag(await this.db.getReferencePhotosByTags(job.reference_tags, job.organization_id))
         : [];
       const draftScript = await this.claude.writeScript(
         job.product_name ?? job.prompt_character ?? 'Product',
@@ -465,10 +465,10 @@ ${UGC_REALISM_RULES}`;
   private async resolveReferences(job: Job, script: string): Promise<ResolvedReference[]> {
     try {
       if (job.reference_tags?.length) {
-        const photos = await this.db.getReferencePhotosByTags(job.reference_tags, job.user_id);
+        const photos = await this.db.getReferencePhotosByTags(job.reference_tags, job.organization_id);
         return this.groupByTag(photos);
       }
-      const all = await this.db.listReferencePhotos(job.user_id);
+      const all = await this.db.listReferencePhotos(job.organization_id);
       if (all.length === 0) return [];
       const groups = this.groupByTag(all);
       const context = `Product: ${job.product_name ?? ''}\nBrief: ${job.video_brief ?? ''}\nScript: ${script}`;

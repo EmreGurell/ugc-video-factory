@@ -6,6 +6,7 @@ import { JobsProcessor } from './jobs.processor';
 import { DatabaseModule } from '../database/database.module';
 import { StorageModule } from '../storage/storage.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { PipelineModule } from '../pipeline/pipeline.module';
     DatabaseModule,
     StorageModule,
     PipelineModule,
+    AuthModule,
   ],
   controllers: [JobsController],
   providers: [JobsService, JobsProcessor],

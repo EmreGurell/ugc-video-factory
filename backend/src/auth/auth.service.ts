@@ -33,7 +33,8 @@ export class AuthService {
 
     const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const user = await this.db.createUser({ email, password_hash });
-    return this.issueTokens(user);
+    const org = await this.db.createPersonalOrganization(user.id, `${email} (Kişisel)`);
+    return this.issueTokens(user, org.id);
   }
 
   async login(email: string, password: string): Promise<AuthTokens> {
@@ -43,7 +44,8 @@ export class AuthService {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) throw new UnauthorizedException('Geçersiz e-posta veya şifre');
 
-    return this.issueTokens(user);
+    const organizationId = await this.db.getDefaultOrganizationId(user.id);
+    return this.issueTokens(user, organizationId);
   }
 
   async refresh(refreshToken: string): Promise<AuthTokens> {
@@ -54,9 +56,11 @@ export class AuthService {
     const user = await this.db.findUserById(stored.user_id);
     if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı');
 
-    // Rotate: eski token'ı iptal edip yenisini üret
+    // Rotate: eski token'ı iptal edip yenisini üret — token'ın bağlı olduğu
+    // organizasyon bağlamı korunur (kullanıcı org değiştirmiş olsa bile bu
+    // refresh token o org'a ait kalır).
     await this.db.revokeRefreshToken(stored.id);
-    return this.issueTokens(user);
+    return this.issueTokens(user, stored.organization_id);
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -65,15 +69,28 @@ export class AuthService {
     if (stored) await this.db.revokeRefreshToken(stored.id);
   }
 
-  private async issueTokens(user: User): Promise<AuthTokens> {
+  // Aktif organizasyonu değiştirir: üyeliği doğrular, o org'a bağlı yeni bir
+  // token çifti basar. Eski token'lar (eski org bağlamıyla) hâlâ geçerli kalır.
+  async switchOrganization(userId: string, organizationId: string): Promise<AuthTokens> {
+    const membership = await this.db.findMembership(userId, organizationId);
+    if (!membership) throw new UnauthorizedException('Bu organizasyona üye değilsin');
+
+    const user = await this.db.findUserById(userId);
+    if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı');
+
+    return this.issueTokens(user, organizationId);
+  }
+
+  private async issueTokens(user: User, organizationId: string): Promise<AuthTokens> {
     const access_token = this.jwt.sign(
-      { sub: user.id, email: user.email },
+      { sub: user.id, email: user.email, active_org_id: organizationId },
       { secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'), expiresIn: ACCESS_TOKEN_TTL },
     );
 
     const refresh_token = randomBytes(48).toString('hex');
     await this.db.createRefreshToken({
       user_id: user.id,
+      organization_id: organizationId,
       token_hash: hashToken(refresh_token),
       expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     });

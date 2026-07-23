@@ -18,11 +18,14 @@ import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { StorageService } from '../storage/storage.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OrgGuard } from '../auth/org.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { CurrentUserPayload } from '../auth/current-user.decorator';
+import { CurrentOrg } from '../auth/current-org.decorator';
+import type { OrgContext } from '../auth/current-org.decorator';
 
 @Controller('jobs')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, OrgGuard)
 export class JobsController {
   constructor(
     private readonly jobsService: JobsService,
@@ -56,26 +59,22 @@ export class JobsController {
 
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  create(@CurrentUser() user: CurrentUserPayload, @Body() dto: CreateJobDto) {
-    return this.jobsService.create(user.id, dto);
+  create(@CurrentUser() user: CurrentUserPayload, @CurrentOrg() org: OrgContext, @Body() dto: CreateJobDto) {
+    return this.jobsService.create(user.id, org.organizationId, dto);
   }
 
   @Get()
-  findAll(@CurrentUser() user: CurrentUserPayload) {
-    return this.jobsService.findAll(user.id);
+  findAll(@CurrentOrg() org: OrgContext) {
+    return this.jobsService.findAll(org.organizationId);
   }
 
   @Put(':id/approve-script')
-  approveScript(
-    @CurrentUser() user: CurrentUserPayload,
-    @Param('id') id: string,
-    @Body() body: { script: string },
-  ) {
-    return this.jobsService.approveScript(user.id, id, body.script);
+  approveScript(@CurrentOrg() org: OrgContext, @Param('id') id: string, @Body() body: { script: string }) {
+    return this.jobsService.approveScript(org.organizationId, id, body.script);
   }
 
   @Get(':id')
-  findOne(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
-    return this.jobsService.findOne(user.id, id);
+  findOne(@CurrentOrg() org: OrgContext, @Param('id') id: string) {
+    return this.jobsService.findOne(org.organizationId, id);
   }
 }

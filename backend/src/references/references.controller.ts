@@ -17,8 +17,11 @@ import { StorageService } from '../storage/storage.service';
 import { ClaudeService } from '../pipeline/claude.service';
 import { FfmpegService } from '../providers/ffmpeg/ffmpeg.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OrgGuard } from '../auth/org.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { CurrentUserPayload } from '../auth/current-user.decorator';
+import { CurrentOrg } from '../auth/current-org.decorator';
+import type { OrgContext } from '../auth/current-org.decorator';
 
 const TAG_MAX_LEN = 40;
 
@@ -42,7 +45,7 @@ function safeTagName(tag: string): string {
 // DELETE /references/:tag           → o etiketin TÜM öğelerini siler
 // DELETE /references/item/:id       → tek bir öğeyi siler
 @Controller('references')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, OrgGuard)
 export class ReferencesController {
   constructor(
     private readonly db: DatabaseService,
@@ -68,6 +71,7 @@ export class ReferencesController {
   )
   async upload(
     @CurrentUser() user: CurrentUserPayload,
+    @CurrentOrg() org: OrgContext,
     @UploadedFile() file: Express.Multer.File,
     @Body('tag') tag?: string,
   ) {
@@ -81,7 +85,7 @@ export class ReferencesController {
       mimeType,
     );
 
-    return this.insertWithDescription(user.id, normalizedTag, url);
+    return this.insertWithDescription(user.id, org.organizationId, normalizedTag, url);
   }
 
   // Videodan eşit aralıklarla kare adayları çıkarır ve storage'a yükler.
@@ -118,41 +122,42 @@ export class ReferencesController {
   @Post('confirm-frame')
   async confirmFrame(
     @CurrentUser() user: CurrentUserPayload,
+    @CurrentOrg() org: OrgContext,
     @Body('tag') tag?: string,
     @Body('frame_url') frameUrl?: string,
   ) {
     const normalizedTag = normalizeTag(tag);
     if (!frameUrl) throw new BadRequestException('frame_url is required');
 
-    return this.insertWithDescription(user.id, normalizedTag, frameUrl);
+    return this.insertWithDescription(user.id, org.organizationId, normalizedTag, frameUrl);
   }
 
   @Get()
-  list(@CurrentUser() user: CurrentUserPayload) {
-    return this.db.listReferencePhotos(user.id);
+  list(@CurrentOrg() org: OrgContext) {
+    return this.db.listReferencePhotos(org.organizationId);
   }
 
   @Delete(':tag')
-  async remove(@CurrentUser() user: CurrentUserPayload, @Param('tag') tag: string) {
-    await this.db.deleteReferencesByTag(tag.trim().toLowerCase(), user.id);
+  async remove(@CurrentOrg() org: OrgContext, @Param('tag') tag: string) {
+    await this.db.deleteReferencesByTag(tag.trim().toLowerCase(), org.organizationId);
     return { ok: true };
   }
 
   @Delete('item/:id')
-  async removeItem(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
-    await this.db.deleteReferencePhotoById(id, user.id);
+  async removeItem(@CurrentOrg() org: OrgContext, @Param('id') id: string) {
+    await this.db.deleteReferencePhotoById(id, org.organizationId);
     return { ok: true };
   }
 
   // Açıklama üretimi: otomatik tag eşleştirme ve prompt bağlamı bunu kullanır.
   // Analiz hatası kaydı engellemesin.
-  private async insertWithDescription(userId: string, tag: string, url: string) {
+  private async insertWithDescription(userId: string, organizationId: string, tag: string, url: string) {
     let description: string | undefined;
     try {
       description = await this.claude.analyzeImage(url);
     } catch {
       description = undefined;
     }
-    return this.db.insertReferencePhoto({ user_id: userId, tag, url, description });
+    return this.db.insertReferencePhoto({ user_id: userId, organization_id: organizationId, tag, url, description });
   }
 }

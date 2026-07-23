@@ -13,9 +13,10 @@ export class JobsService {
     @InjectQueue(VIDEO_PIPELINE_QUEUE) private queue: Queue,
   ) {}
 
-  async create(userId: string, dto: CreateJobDto) {
+  async create(userId: string, organizationId: string, dto: CreateJobDto) {
     const job = await this.db.createJob({
       user_id: userId,
+      organization_id: organizationId,
       product_name: dto.product_name,
       video_brief: dto.video_brief,
       prompt_character: dto.character_description,
@@ -39,8 +40,8 @@ export class JobsService {
     return { job_id: job.id };
   }
 
-  async approveScript(userId: string, id: string, script: string) {
-    const job = await this.db.getJobForUser(id, userId);
+  async approveScript(organizationId: string, id: string, script: string) {
+    const job = await this.db.getJobForOrg(id, organizationId);
     if (job.status !== 'awaiting_script_approval') {
       throw new BadRequestException(`Job is not awaiting script approval (status: ${job.status})`);
     }
@@ -55,11 +56,11 @@ export class JobsService {
     return { ok: true };
   }
 
-  async findOne(userId: string, id: string) {
-    return this.db.getJobForUser(id, userId);
+  async findOne(organizationId: string, id: string) {
+    return this.db.getJobForOrg(id, organizationId);
   }
 
-  async findAll(userId: string) {
-    return this.db.listJobsForUser(userId);
+  async findAll(organizationId: string) {
+    return this.db.listJobsForOrg(organizationId);
   }
 }

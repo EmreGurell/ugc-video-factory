@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { StorageModule } from './storage/storage.module';
 import { ReferencesModule } from './references/references.module';
 import { AuthModule } from './auth/auth.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
@@ -20,6 +21,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     DatabaseModule,
     StorageModule,
     AuthModule,
+    OrganizationsModule,
     NotificationsModule,
     PipelineModule,
     JobsModule,
